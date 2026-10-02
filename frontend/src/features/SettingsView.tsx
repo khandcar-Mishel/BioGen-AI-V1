@@ -3,27 +3,28 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAppStore } from '../stores/appStore';
-import { checkHealth } from '../services/api';
+import { checkHealth, normalizeBackendUrl } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 
 const schema = z.object({
   endpoint: z.string().min(1, 'Gateway Endpoint is required').url('Must be a valid URL'),
-  apiKey: z.string().max(200, 'Authentication Token is too long').optional()
 });
 
 type FormData = z.infer<typeof schema>;
 
 type GPUStatus = 'disconnected' | 'connecting' | 'connected';
 
+const CONFIGURED_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || '';
+
 export function SettingsView() {
-  const { backendUrl, apiKey, setBackendUrl, setApiKey, lastConnected, isBackendConnected, setConnectionStatus } = useAppStore();
+  const { backendUrl, setBackendUrl, lastConnected, isBackendConnected, setConnectionStatus } = useAppStore();
   const navigate = useNavigate();
 
   const [gpuStatus, setGpuStatus] = useState<GPUStatus>('disconnected');
   const [latency, setLatency] = useState<number | null>(null);
   const [testMessage, setTestMessage] = useState<{type: 'error' | 'success', text: string} | null>(null);
   // Values the last test was run against, so editing fields afterwards invalidates the result
-  const [testedConfig, setTestedConfig] = useState<{endpoint: string; apiKey: string} | null>(null);
+  const [testedConfig, setTestedConfig] = useState<{endpoint: string} | null>(null);
 
   // Initialize GPU status on mount based on store
   useEffect(() => {
@@ -38,22 +39,20 @@ export function SettingsView() {
   const { register, handleSubmit, watch, setValue, formState: { errors, isValid } } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      endpoint: backendUrl || '',
-      apiKey: apiKey || ''
+      endpoint: backendUrl || import.meta.env.VITE_BACKEND_URL || '',
     },
     mode: 'onChange'
   });
 
   const currentEndpoint = watch('endpoint');
-  const currentApiKey = watch('apiKey');
 
   // If user modifies fields after a successful test, revert to disconnected
   useEffect(() => {
-    if (gpuStatus === 'connected' && testedConfig && (currentEndpoint !== testedConfig.endpoint || (currentApiKey || '') !== testedConfig.apiKey)) {
+    if (gpuStatus === 'connected' && testedConfig && currentEndpoint !== testedConfig.endpoint) {
       setGpuStatus('disconnected');
       setTestMessage(null);
     }
-  }, [currentEndpoint, currentApiKey, testedConfig, gpuStatus]);
+  }, [currentEndpoint, testedConfig, gpuStatus]);
 
   const formatUrl = () => {
     let url = currentEndpoint.trim();
@@ -71,14 +70,20 @@ export function SettingsView() {
     setGpuStatus('connecting');
     setTestMessage(null);
     setLatency(null);
-    setTestedConfig({ endpoint: data.endpoint, apiKey: data.apiKey || '' });
+    setTestedConfig({ endpoint: data.endpoint });
     
     try {
-      const res = await checkHealth(data.endpoint, data.apiKey);
+      const res = await checkHealth(data.endpoint);
       if (res.status === 'ok') {
         setGpuStatus('connected');
         setLatency(res.latency || 12);
-        setTestMessage({ type: 'success', text: 'Connection successful. GPU ready.' });
+        setTestMessage({
+          type: 'success',
+          text:
+            res.rfdiffusion_ready === false
+              ? 'Connected, but the model weights are not on the backend yet. Run download_weights first.'
+              : res.message || 'Connection successful. GPU ready.',
+        });
       } else {
         throw new Error('Invalid status');
       }
@@ -86,14 +91,12 @@ export function SettingsView() {
       setGpuStatus('disconnected');
       
       let msg = 'Connection failed';
-      if (err.response?.status === 401 || err.response?.status === 403) {
-        msg = 'Invalid API Key (Unauthorized)';
-      } else if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
-        msg = 'Connection Timeout. Is Colab running?';
+      if (err.code === 'ECONNABORTED' || err.message.includes('timeout')) {
+        msg = 'Connection timeout. A cold Modal gateway can take a few seconds: try again.';
       } else if (err.message === 'Network Error' || !err.response) {
-        msg = 'Network Error or ngrok tunnel expired.';
+        msg = 'Network error: the backend is unreachable at this URL. If the Modal app was redeployed, its URL may have changed (see the `modal deploy` output).';
       } else if (err.response?.status >= 500) {
-        msg = 'Server Error on Colab side.';
+        msg = 'Server error on the backend.';
       }
       setTestMessage({ type: 'error', text: msg });
     }
@@ -102,8 +105,7 @@ export function SettingsView() {
   const onSaveAndConnect = (data: FormData) => {
     if (gpuStatus !== 'connected') return;
 
-    setBackendUrl(data.endpoint);
-    setApiKey(data.apiKey || '');
+    setBackendUrl(normalizeBackendUrl(data.endpoint));
     const now = new Date().toISOString();
     setConnectionStatus(true, now);
 
@@ -152,7 +154,7 @@ export function SettingsView() {
               GPU Gateway &amp; Backend Configuration
             </h1>
             <p className="text-[11px] text-slate-500 font-medium">
-              Connect the studio to a local backend or a remote Colab GPU
+              Connect the studio to your Modal deployment (or a local backend)
             </p>
           </div>
 
@@ -160,29 +162,29 @@ export function SettingsView() {
             
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Backend / Tunnel URL
+                Backend URL
               </label>
               <input
                 type="url"
                 {...register('endpoint')}
                 onBlur={formatUrl}
-                placeholder="http://localhost:8000/api/v1"
+                placeholder="https://<workspace>--biogen-rfdiffusion-api.modal.run"
                 className="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 rounded-lg px-3 py-1.5 text-xs text-slate-800 outline-none transition-all"
               />
               {errors.endpoint && <p className="text-red-500 text-[10px] font-bold mt-1">{errors.endpoint.message}</p>}
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Authentication Token <span className="font-normal text-slate-400">(optional)</span>
-              </label>
-              <input
-                type="password"
-                {...register('apiKey')}
-                placeholder="Only required if the backend enforces an API key"
-                className="w-full bg-slate-50 border border-slate-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 rounded-lg px-3 py-1.5 text-xs font-mono tracking-widest text-slate-800 outline-none transition-all"
-              />
-              {errors.apiKey && <p className="text-red-500 text-[10px] font-bold mt-1">{errors.apiKey.message}</p>}
+              {CONFIGURED_URL &&
+                normalizeBackendUrl(currentEndpoint || '') !== normalizeBackendUrl(CONFIGURED_URL) && (
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    This differs from the backend configured for this app (<span className="font-mono">{CONFIGURED_URL}</span>).{' '}
+                    <button
+                      type="button"
+                      onClick={() => setValue('endpoint', CONFIGURED_URL, { shouldValidate: true })}
+                      className="font-bold text-emerald-600 hover:text-emerald-700"
+                    >
+                      Use it
+                    </button>
+                  </p>
+                )}
             </div>
 
             {testMessage && (

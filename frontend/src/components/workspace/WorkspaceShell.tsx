@@ -9,6 +9,7 @@ import {
   Clock3,
   Settings2,
   CircleHelp,
+  LogOut,
   ArrowLeft,
   PanelLeftClose,
   PanelLeftOpen,
@@ -20,6 +21,7 @@ import {
   ChartNoAxesCombined,
 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
+import { useAuthStore } from '../../stores/authStore';
 
 const links = [
   { path: '', label: 'RFdiffusion', icon: Activity },
@@ -43,6 +45,13 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [checking, setChecking] = useState(false);
   const { isBackendConnected, checkConnection, jobStatus } = useAppStore();
+  const email = useAuthStore((s) => s.email);
+  const signOut = () => {
+    // the next person on this browser should not inherit this run
+    useAppStore.setState({ currentJobId: null, jobStatus: null });
+    useAuthStore.getState().signOut();
+    navigate('/login', { replace: true });
+  };
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const check = async () => {
@@ -51,12 +60,19 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
     setChecking(false);
     if (!connected) navigate('/rfdiffusion/studio/settings');
   };
+  const phases = jobStatus?.designs_progress?.map((d) => d.phase) ?? [];
   const activeStep =
     jobStatus?.status === 'completed'
       ? 5
-      : jobStatus?.status === 'running'
-        ? 2
-        : 0;
+      : jobStatus?.status === 'running' || jobStatus?.status === 'packaging'
+        ? phases.includes('af2')
+          ? 4
+          : phases.includes('mpnn')
+            ? 3
+            : 2
+        : jobStatus?.status === 'preparing' || jobStatus?.status === 'queued'
+          ? 1
+          : 0;
   const navLink = (item: (typeof links)[number]) => (
     <NavLink
       key={item.path}
@@ -233,6 +249,21 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
               <span className="hidden sm:inline">
                 {isBackendConnected ? 'Check connection' : 'Connect GPU'}
               </span>
+            </button>
+            <button
+              type="button"
+              onClick={signOut}
+              title={email ? `Signed in as ${email}` : 'Sign out'}
+              aria-label="Sign out"
+              className="flex items-center gap-2 h-8 pl-2.5 pr-2.5 rounded-[7px] border border-ws-border text-[11px] font-semibold text-ws-text-sec hover:bg-ws-page hover:text-ws-text"
+            >
+              {email && (
+                <span className="hidden xl:inline max-w-[160px] truncate font-medium">
+                  {email}
+                </span>
+              )}
+              <LogOut size={14} />
+              <span className="hidden sm:inline">Sign out</span>
             </button>
             <Link
               to="/rfdiffusion/studio/help"

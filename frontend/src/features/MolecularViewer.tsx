@@ -1,16 +1,27 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowClockwise,
   ArrowCounterClockwise,
   Hand,
   MagnifyingGlassPlus,
   ArrowsOut,
+  Play,
+  Pause,
 } from '@phosphor-icons/react';
+
+export type ColorMode = 'spectrum' | 'chain' | 'plddt';
 
 interface ViewerProps {
   pdbData?: string;
   pdbId?: string;
   compact?: boolean;
+  /** Drawn as a faint grey backbone under `pdbData` (e.g. the RFdiffusion design under its AF2 prediction). */
+  overlayPdb?: string;
+  /** Multi-model PDB (noise -> final). Shown as playable frames instead of `pdbData`. */
+  trajectoryPdb?: string;
+  /** Initial colouring; pLDDT is only offered when the B-factors really are pLDDT. */
+  defaultColorBy?: ColorMode;
+  hasPlddt?: boolean;
 }
 
 type Representation = 'cartoon' | 'surface' | 'stick';
@@ -21,22 +32,79 @@ const STYLES: { id: Representation; label: string }[] = [
   { id: 'stick', label: 'Stick' },
 ];
 
-/** Smoothly applies one of three representations to a live 3Dmol viewer. */
-function applyRepresentation(viewer: any, w: any, rep: Representation) {
+const COLOR_LABELS: Record<ColorMode, string> = {
+  spectrum: 'Rainbow',
+  chain: 'Chain',
+  plddt: 'pLDDT',
+};
+
+// AlphaFold's pLDDT confidence bands.
+const PLDDT_BANDS = [
+  { color: '#0053D6', label: 'Very high (>90)' },
+  { color: '#65CBF3', label: 'High (70–90)' },
+  { color: '#FFDB13', label: 'Low (50–70)' },
+  { color: '#FF7D45', label: 'Very low (<50)' },
+];
+const plddtColor = (b: number) =>
+  b > 90 ? 0x0053d6 : b > 70 ? 0x65cbf3 : b > 50 ? 0xffdb13 : 0xff7d45;
+
+const CHAIN_COLORS = [
+  0x10a875, 0x2f80ed, 0xf2994a, 0x9b51e0, 0xeb5757, 0x20b15a, 0xeab308,
+  0x0fb5c4,
+];
+// A -> first colour, B -> second, ... (case-insensitive; digits wrap around too)
+const chainColor = (chain: string) => {
+  const i = ((chain || 'A').toUpperCase().charCodeAt(0) - 65) % CHAIN_COLORS.length;
+  return CHAIN_COLORS[(i + CHAIN_COLORS.length) % CHAIN_COLORS.length];
+};
+
+const FRAME_MS = 110;
+
+/** Colour spec for a 3Dmol style, by mode. */
+function colorSpec(mode: ColorMode, extra: Record<string, unknown> = {}) {
+  if (mode === 'plddt') return { colorfunc: (a: any) => plddtColor(a.b), ...extra };
+  if (mode === 'chain') return { colorfunc: (a: any) => chainColor(a.chain), ...extra };
+  return { color: 'spectrum', ...extra };
+}
+
+/** Applies a representation + colouring to the live 3Dmol viewer. */
+function applyStyle(
+  viewer: any,
+  w: any,
+  rep: Representation,
+  mode: ColorMode,
+  hasOverlay: boolean
+) {
   viewer.removeAllSurfaces();
+  // With an overlay, model 0 is the faint reference and model 1 the structure being inspected.
+  const main = hasOverlay ? { model: 1 } : {};
+  if (hasOverlay) {
+    viewer.setStyle(
+      { model: 0 },
+      { cartoon: { color: '#98A2B3', opacity: 0.4, thickness: 0.4 } }
+    );
+  }
   if (rep === 'cartoon') {
-    viewer.setStyle({}, { cartoon: { color: 'spectrum' } });
+    viewer.setStyle(main, { cartoon: colorSpec(mode) });
   } else if (rep === 'stick') {
-    viewer.setStyle({}, { stick: { radius: 0.16, colorscheme: 'Jmol' } });
+    viewer.setStyle(main, {
+      stick:
+        mode === 'spectrum'
+          ? { radius: 0.16, colorscheme: 'Jmol' }
+          : colorSpec(mode, { radius: 0.16 }),
+    });
   } else {
-    // surface: a translucent envelope over a faint spectrum cartoon underneath,
+    // surface: a translucent envelope over a faint cartoon underneath,
     // for a more cinematic, biologically legible look than a flat solid shell.
-    viewer.setStyle({}, { cartoon: { color: 'spectrum', opacity: 0.55 } });
+    viewer.setStyle(main, { cartoon: colorSpec(mode, { opacity: 0.55 }) });
     try {
-      viewer.addSurface(w.$3Dmol.SurfaceType.VDW, {
-        opacity: 0.82,
-        colorscheme: 'whiteCarbon',
-      });
+      viewer.addSurface(
+        w.$3Dmol.SurfaceType.VDW,
+        mode === 'spectrum'
+          ? { opacity: 0.82, colorscheme: 'whiteCarbon' }
+          : colorSpec(mode, { opacity: 0.82 }),
+        main
+      );
     } catch {
       // Surface generation can fail on huge/odd structures -- fall back to cartoon only.
     }
@@ -48,18 +116,54 @@ export function MolecularViewer({
   pdbData,
   pdbId,
   compact = false,
+  overlayPdb,
+  trajectoryPdb,
+  defaultColorBy = 'spectrum',
+  hasPlddt = false,
 }: ViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const viewerInstance = useRef<any>(null);
   const [representation, setRepresentation] =
     useState<Representation>('cartoon');
+  const [colorMode, setColorMode] = useState<ColorMode>(defaultColorBy);
   const [spinning, setSpinning] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [frames, setFrames] = useState(0);
+  const [frame, setFrame] = useState(0);
+  const [playing, setPlaying] = useState(false);
+
   const repRef = useRef(representation);
+  const colorRef = useRef(colorMode);
+  const overlayRef = useRef(false);
   useEffect(() => {
     repRef.current = representation;
   }, [representation]);
+  useEffect(() => {
+    colorRef.current = colorMode;
+  }, [colorMode]);
+
+  // The parent switching views (e.g. overlay -> backbone) resets the colouring. This must update the ref
+  // synchronously and restyle: the viewer is NOT remounted when the files are already cached, and the model
+  // effect below (declared after this one, so it sees the new ref) only runs if the structure itself changed.
+  useEffect(() => {
+    colorRef.current = defaultColorBy;
+    setColorMode(defaultColorBy);
+    const viewer = viewerInstance.current;
+    const w = window as any;
+    if (viewer && w.$3Dmol) {
+      applyStyle(viewer, w, repRef.current, defaultColorBy, overlayRef.current);
+    }
+  }, [defaultColorBy]);
+
+  const goToFrame = useCallback((n: number) => {
+    const viewer = viewerInstance.current;
+    if (!viewer) return;
+    setFrame(n);
+    const r = viewer.setFrame(n);
+    if (r && typeof r.then === 'function') r.then(() => viewer.render());
+    else viewer.render();
+  }, []);
 
   useEffect(() => {
     if (!viewerRef.current || !(window as any).$3Dmol) return;
@@ -75,9 +179,19 @@ export function MolecularViewer({
     viewer.clear();
     setLoaded(false);
     setSpinning(false);
+    setPlaying(false);
+    setFrames(0);
+    setFrame(0);
+    overlayRef.current = false;
 
     const onReady = () => {
-      applyRepresentation(viewer, w, repRef.current);
+      applyStyle(
+        viewer,
+        w,
+        repRef.current,
+        colorRef.current,
+        overlayRef.current
+      );
       viewer.zoomTo();
       viewer.render();
       // Fade/scale the canvas in once the structure has actually resolved,
@@ -85,13 +199,27 @@ export function MolecularViewer({
       requestAnimationFrame(() => setLoaded(true));
     };
 
-    if (pdbData) {
+    if (trajectoryPdb) {
+      viewer.addModelsAsFrames(trajectoryPdb, 'pdb');
+      const n = viewer.getNumFrames?.() ?? 1;
+      setFrames(n);
+      // Frame the final design, then park on it; Play replays the denoising from noise.
+      if (n > 1) {
+        viewer.setFrame(n - 1);
+        setFrame(n - 1);
+      }
+      onReady();
+    } else if (pdbData) {
+      if (overlayPdb) {
+        viewer.addModel(overlayPdb, 'pdb');
+        overlayRef.current = true;
+      }
       viewer.addModel(pdbData, 'pdb');
       onReady();
     } else if (pdbId) {
       w.$3Dmol.download(`pdb:${pdbId}`, viewer, {}, onReady);
     }
-  }, [pdbData, pdbId]);
+  }, [pdbData, pdbId, overlayPdb, trajectoryPdb]);
 
   useEffect(() => {
     const observer = new ResizeObserver(() => {
@@ -105,6 +233,25 @@ export function MolecularViewer({
       viewerInstance.current?.clear();
     };
   }, []);
+
+  // Denoising playback: noise -> final, stopping on the finished design.
+  useEffect(() => {
+    if (!playing || frames < 2) return;
+    let current = frame >= frames - 1 ? 0 : frame;
+    goToFrame(current);
+    const timer = setInterval(() => {
+      current += 1;
+      if (current >= frames) {
+        clearInterval(timer);
+        setPlaying(false);
+        return;
+      }
+      goToFrame(current);
+    }, FRAME_MS);
+    return () => clearInterval(timer);
+    // `frame` is intentionally read once when playback starts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing, frames, goToFrame]);
 
   const handleReset = () => {
     const viewer = viewerInstance.current;
@@ -129,12 +276,21 @@ export function MolecularViewer({
     setSpinning(next);
   };
 
-  const handleRepresentation = (rep: Representation) => {
-    setRepresentation(rep);
+  const restyle = (rep: Representation, mode: ColorMode) => {
     const viewer = viewerInstance.current;
     const w = window as any;
     if (!viewer || !w.$3Dmol) return;
-    applyRepresentation(viewer, w, rep);
+    applyStyle(viewer, w, rep, mode, overlayRef.current);
+  };
+
+  const handleRepresentation = (rep: Representation) => {
+    setRepresentation(rep);
+    restyle(rep, colorMode);
+  };
+
+  const handleColor = (mode: ColorMode) => {
+    setColorMode(mode);
+    restyle(representation, mode);
   };
 
   const handleFullscreen = () => {
@@ -148,6 +304,11 @@ export function MolecularViewer({
       document.exitFullscreen();
     }
   };
+
+  const isTrajectory = !!trajectoryPdb;
+  const colorOptions: ColorMode[] = hasPlddt
+    ? ['plddt', 'spectrum', 'chain']
+    : ['spectrum', 'chain'];
 
   return (
     <div
@@ -163,28 +324,110 @@ export function MolecularViewer({
         }}
       />
 
-      {!loaded && (pdbData || pdbId) && (
+      {!loaded && (pdbData || pdbId || trajectoryPdb) && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div className="h-8 w-8 rounded-full border-2 border-emerald-200 border-t-emerald-500 animate-spin" />
         </div>
       )}
 
-      {/* Representation switcher */}
-      <div className="absolute left-4 top-4 z-10 flex items-center gap-0.5 bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-sm p-1">
-        {STYLES.map((s) => (
-          <button
-            key={s.id}
-            onClick={() => handleRepresentation(s.id)}
-            className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
-              representation === s.id
-                ? 'bg-emerald-50 text-emerald-700'
-                : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
-            }`}
+      {/* Representation + colour switchers */}
+      <div className="absolute left-4 top-4 z-10 flex flex-col items-start gap-2">
+        <div className="flex items-center gap-0.5 bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-sm p-1">
+          {STYLES.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => handleRepresentation(s.id)}
+              className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                representation === s.id
+                  ? 'bg-emerald-50 text-emerald-700'
+                  : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        {!compact && !isTrajectory && (
+          <div
+            className="flex items-center gap-0.5 bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-sm p-1"
+            role="group"
+            aria-label="Colour by"
           >
-            {s.label}
-          </button>
-        ))}
+            {colorOptions.map((c) => (
+              <button
+                key={c}
+                onClick={() => handleColor(c)}
+                className={`px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-colors ${
+                  colorMode === c
+                    ? 'bg-sky-50 text-sky-700'
+                    : 'text-slate-500 hover:bg-slate-50 hover:text-slate-700'
+                }`}
+              >
+                {COLOR_LABELS[c]}
+              </button>
+            ))}
+          </div>
+        )}
+        {!compact && !isTrajectory && colorMode === 'plddt' && (
+          <div className="bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-sm px-2.5 py-2">
+            <p className="text-[10px] font-bold text-slate-600 mb-1">
+              AlphaFold2 pLDDT
+            </p>
+            {PLDDT_BANDS.map((b) => (
+              <p
+                key={b.label}
+                className="flex items-center gap-1.5 text-[10px] text-slate-500"
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-sm"
+                  style={{ background: b.color }}
+                />
+                {b.label}
+              </p>
+            ))}
+          </div>
+        )}
+        {overlayPdb && !isTrajectory && !compact && (
+          <p className="flex items-center gap-1.5 text-[10px] text-slate-500 bg-white/90 backdrop-blur border border-slate-200 rounded-lg px-2.5 py-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-[#98A2B3]" />
+            RFdiffusion backbone (grey)
+          </p>
+        )}
       </div>
+
+      {/* Denoising playback */}
+      {isTrajectory && frames > 1 && (
+        <div className="absolute left-4 right-20 bottom-12 z-10 flex items-center gap-3 bg-white/90 backdrop-blur border border-slate-200 rounded-lg shadow-sm px-3 py-2">
+          <button
+            onClick={() => setPlaying((p) => !p)}
+            aria-label={playing ? 'Pause denoising' : 'Play denoising'}
+            className="w-7 h-7 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shrink-0"
+          >
+            {playing ? (
+              <Pause size={14} weight="fill" />
+            ) : (
+              <Play size={14} weight="fill" />
+            )}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={frames - 1}
+            value={frame}
+            onChange={(e) => {
+              setPlaying(false);
+              goToFrame(Number(e.target.value));
+            }}
+            aria-label="Denoising step"
+            className="flex-1 accent-emerald-500"
+          />
+          <span className="text-[10px] font-mono text-slate-500 w-[84px] text-right">
+            {frame === frames - 1
+              ? 'final design'
+              : `step ${frame + 1}/${frames}`}
+          </span>
+        </div>
+      )}
 
       {/* Right Floating Toolbar */}
       <div

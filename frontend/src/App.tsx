@@ -8,7 +8,6 @@ import {
 import {
   SquaresFour,
   Folder,
-  Clock,
   Hammer,
   Microscope,
   Waves,
@@ -18,11 +17,13 @@ import {
 import { DesignView } from './features/DesignView';
 import { AnalyzeView } from './features/AnalyzeView';
 import { ResultsView } from './features/ResultsView';
+import { HistoryView } from './features/HistoryView';
 import { SettingsView } from './features/SettingsView';
 import { ComingSoon } from './components/ComingSoon';
 import { WorkspaceShell } from './components/workspace/WorkspaceShell';
 import { useDesignWorkspace } from './features/useDesignWorkspace';
 import { useAppStore } from './stores/appStore';
+import { RequireAuth } from './features/auth/RequireAuth';
 import { lazy, Suspense, useEffect } from 'react';
 
 const LandingPage = lazy(() =>
@@ -46,6 +47,12 @@ const ScreeningLanding = lazy(() =>
 const MDSimulationLanding = lazy(() =>
   import('./features/MDSimulationLanding').then((module) => ({
     default: module.MDSimulationLanding,
+  }))
+);
+
+const LoginPage = lazy(() =>
+  import('./features/auth/LoginPage').then((module) => ({
+    default: module.LoginPage,
   }))
 );
 
@@ -73,7 +80,15 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
 
           <Route path="/rfdiffusion" element={<RFdiffusionLanding />} />
-          <Route path="/rfdiffusion/studio/*" element={<RFdiffusionStudio />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/rfdiffusion/studio/*"
+            element={
+              <RequireAuth>
+                <RFdiffusionStudio />
+              </RequireAuth>
+            }
+          />
           <Route path="/rfdiffusion/workspace/*" element={<WorkspaceAlias />} />
 
           <Route path="/screening" element={<ScreeningLanding />} />
@@ -203,16 +218,7 @@ function RFdiffusionStudio() {
             />
           }
         />
-        <Route
-          path="/history"
-          element={
-            <PlaceholderPage
-              icon={<Clock size={20} weight="regular" />}
-              title="History"
-              message="A run history log is coming in a future release."
-            />
-          }
-        />
+        <Route path="/history" element={<HistoryView />} />
         <Route
           path="/help"
           element={

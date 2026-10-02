@@ -7,6 +7,7 @@ import {
   Inbox,
   Database,
   CircleHelp,
+  TriangleAlert,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { MolecularViewer } from './MolecularViewer';
@@ -17,17 +18,38 @@ import { useAppStore } from '../stores/appStore';
 const card =
   'bg-ws-card border border-ws-border rounded-[14px] p-3.5 sm:p-4 shadow-[0_1px_4px_rgba(16,24,40,0.03)]';
 
+const PHASE_LABEL: Record<string, string> = {
+  queued: 'Waiting for GPU',
+  preparing: 'Preparing',
+  diffusion: 'RFdiffusion',
+  mpnn: 'ProteinMPNN',
+  af2: 'AlphaFold2',
+  done: 'Done',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+const PHASE_BAR: Record<string, string> = {
+  done: 'bg-ws-primary',
+  failed: 'bg-red-400',
+  cancelled: 'bg-slate-300',
+};
+
 export function DesignView({ design: d }: { design: DesignWorkspace }) {
   const { jobStatus, isBackendConnected } = useAppStore();
-  const statusText = d.isGenerating
-    ? jobStatus?.status_message || 'Submitting design job...'
-    : jobStatus?.status === 'completed'
-      ? 'Generation complete'
-      : jobStatus?.status === 'failed'
-        ? jobStatus.status_message || 'Generation failed'
-        : jobStatus?.status === 'cancelled'
-          ? 'Generation cancelled'
-          : 'Ready to generate';
+  const statusText = d.cancelling
+    ? 'Cancelling…'
+    : d.isGenerating
+      ? jobStatus?.status_message || 'Submitting design job...'
+      : jobStatus?.status === 'completed'
+        ? jobStatus.status_message || 'Generation complete'
+        : jobStatus?.status === 'failed'
+          ? jobStatus.status_message || 'Generation failed'
+          : jobStatus?.status === 'cancelled'
+            ? 'Generation cancelled'
+            : 'Ready to generate';
+  const perDesign = d.isGenerating ? (jobStatus?.designs_progress ?? []) : [];
+  const topDesigns =
+    jobStatus?.status === 'completed' ? (jobStatus.designs ?? []).slice(0, 3) : [];
   return (
     <div className="max-w-[1600px] mx-auto flex flex-col lg:flex-row gap-3 sm:gap-3.5">
       <div className="w-full lg:w-[54%] flex flex-col gap-3 min-w-0">
@@ -240,7 +262,7 @@ export function DesignView({ design: d }: { design: DesignWorkspace }) {
             <div
               role="progressbar"
               aria-label="Generation progress"
-              aria-valuenow={d.progress}
+              aria-valuenow={Math.round(d.progress)}
               aria-valuemin={0}
               aria-valuemax={100}
               className="flex-1 h-1.5 bg-ws-progress rounded-full overflow-hidden"
@@ -251,11 +273,58 @@ export function DesignView({ design: d }: { design: DesignWorkspace }) {
               />
             </div>
             <span className="text-[11px] font-bold font-mono">
-              {d.progress}%
+              {Math.round(d.progress)}%
             </span>
           </div>
-          <div className="flex justify-between mt-2 text-[10px] text-ws-muted">
+          {perDesign.length > 1 && (
+            <ul
+              aria-label="Per-design progress"
+              className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5"
+            >
+              {perDesign.map((p) => (
+                <li key={p.index} className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-ws-muted w-6 shrink-0">
+                    D{p.index + 1}
+                  </span>
+                  <div className="flex-1 h-1 bg-ws-progress rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all ${PHASE_BAR[p.phase] ?? 'bg-ws-primary/70'}`}
+                      style={{ width: `${p.pct}%` }}
+                    />
+                  </div>
+                  <span
+                    title={p.msg}
+                    className="text-[10px] text-ws-text-sec w-[84px] truncate"
+                  >
+                    {PHASE_LABEL[p.phase] ?? p.phase}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {d.pollWarning && (
+            <p className="mt-2 flex items-start gap-1.5 text-[11px] text-amber-700">
+              <TriangleAlert size={13} className="shrink-0 mt-px" />
+              {d.pollWarning}
+            </p>
+          )}
+          {jobStatus?.status === 'failed' && jobStatus.error_message && (
+            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap rounded-md bg-red-50 p-2 text-[10.5px] text-red-700">
+              {jobStatus.error_message}
+            </pre>
+          )}
+          <div className="flex items-center justify-between mt-2 text-[10px] text-ws-muted">
             <span>Elapsed: {d.elapsed}</span>
+            {d.isGenerating && (
+              <button
+                type="button"
+                onClick={d.handleCancel}
+                disabled={d.cancelling}
+                className="font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+              >
+                {d.cancelling ? 'Cancelling…' : 'Cancel run'}
+              </button>
+            )}
             {!isBackendConnected && (
               <Link
                 to="/rfdiffusion/studio/settings"
@@ -287,8 +356,28 @@ export function DesignView({ design: d }: { design: DesignWorkspace }) {
               View all →
             </Link>
           </div>
-          {jobStatus?.status === 'completed' &&
-          jobStatus.output_files?.length ? (
+          {topDesigns.length ? (
+            <div className="flex flex-col gap-1">
+              {topDesigns.map((des) => (
+                <Link
+                  key={des.index}
+                  to="/rfdiffusion/studio/results"
+                  className="flex items-center justify-between gap-2 text-xs text-ws-dark rounded-md bg-ws-pale p-2"
+                >
+                  <span className="truncate">
+                    <span className="font-mono text-ws-muted">#{des.rank}</span>{' '}
+                    {des.label}
+                  </span>
+                  <span className="font-mono text-[10.5px] text-ws-text-sec shrink-0">
+                    {des.metrics
+                      ? `pLDDT ${des.metrics.plddt?.toFixed(0) ?? '–'} · ${des.metrics.rmsd?.toFixed(1) ?? '–'} Å${des.metrics.i_pae != null ? ` · iPAE ${des.metrics.i_pae.toFixed(1)}` : ''}${des.passed ? ' ✓' : ''}`
+                      : 'backbone'}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          ) : jobStatus?.status === 'completed' &&
+            jobStatus.output_files?.length ? (
             <div className="flex flex-col gap-1">
               {jobStatus.output_files.slice(0, 3).map((file: string) => (
                 <Link
