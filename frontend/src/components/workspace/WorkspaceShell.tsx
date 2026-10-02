@@ -13,13 +13,13 @@ import {
   ArrowLeft,
   PanelLeftClose,
   PanelLeftOpen,
-  Hexagon,
   Cpu,
   RefreshCw,
   Menu,
   X,
   ChartNoAxesCombined,
 } from 'lucide-react';
+import { BrandMark } from '../BrandMark';
 import { useAppStore } from '../../stores/appStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -106,9 +106,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
             className="flex items-center gap-2.5 min-w-0"
             title="BioGen AI home"
           >
-            <span className="w-[32px] h-[34px] bg-ws-text rounded-[10px] flex items-center justify-center shrink-0 text-ws-primary">
-              <Hexagon size={18} strokeWidth={2.5} />
-            </span>
+            <BrandMark size={34} />
             <span className={collapsed ? 'lg:hidden' : ''}>
               <span className="block font-bold text-[15px] whitespace-nowrap">
                 BioGen AI

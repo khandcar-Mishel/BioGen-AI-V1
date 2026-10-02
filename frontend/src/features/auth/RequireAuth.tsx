@@ -4,6 +4,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { BrandMark } from '../../components/BrandMark';
 import { fetchMe } from '../../services/api';
+import { useAppStore } from '../../stores/appStore';
 import { isSessionValid, useAuthStore } from '../../stores/authStore';
 
 /**
@@ -42,10 +43,16 @@ export function RequireAuth({ children }: { children: ReactNode }) {
     if (!token || !valid) return;
     let cancelled = false;
     fetchMe()
-      .then(() => !cancelled && setCheck({ token, result: 'ok' }))
+      .then(() => {
+        if (cancelled) return;
+        useAppStore.getState().setConnectionStatus(true, new Date().toISOString());
+        setCheck({ token, result: 'ok' });
+      })
       .catch((err) => {
         // 401: the API client has already ended the session, and the redirect below takes over.
-        if (!cancelled && err?.response?.status !== 401) setCheck({ token, result: 'offline' });
+        if (cancelled || err?.response?.status === 401) return;
+        useAppStore.getState().setConnectionStatus(false);
+        setCheck({ token, result: 'offline' });
       });
     return () => {
       cancelled = true;

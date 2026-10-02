@@ -331,6 +331,7 @@ export function useDesignWorkspace() {
 
       let failures = 0;
       interval = setInterval(async () => {
+        if (document.hidden) return;      // nobody is looking: don't wake the backend for a hidden tab
         try {
           const status = await getJobStatus(currentJobId);
           failures = 0;

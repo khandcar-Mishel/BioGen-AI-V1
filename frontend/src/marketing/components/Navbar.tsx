@@ -1,4 +1,5 @@
 import Modal from './Modal';
+import { BrandMark } from '../../components/BrandMark';
 import { useState, useEffect } from 'react';
 import { Search, ArrowRight, Menu, X, Dna, FlaskConical, Waves, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -54,9 +55,7 @@ export default function Navbar() {
       <div className="max-w-[1240px] mx-auto px-6 sm:px-8 h-full flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="flex items-center gap-3 group">
-          <div className="w-[34px] h-[34px] bg-screen-navy rounded-[10px] flex items-center justify-center text-bio-green group-hover:scale-105 transition-transform">
-            <img src="/main-transparent.png" alt="BioGen AI molecular mark" className="h-full w-full object-contain" />
-          </div>
+          <BrandMark size={36} className="group-hover:scale-105 transition-transform" />
           <div className="flex flex-col">
             <span className={`font-bold text-[17px] leading-tight ${isTransparent ? 'text-white' : 'text-text-main'} transition-colors`}>
               BioGen AI

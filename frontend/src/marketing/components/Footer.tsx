@@ -1,4 +1,5 @@
-import { Hexagon, Github, Linkedin, Youtube } from "lucide-react";
+import { Github, Linkedin, Youtube } from "lucide-react";
+import { BrandMark } from "../../components/BrandMark";
 import { Link } from "react-router-dom";
 
 export default function Footer() {
@@ -10,9 +11,7 @@ export default function Footer() {
           {/* Brand */}
           <div className="flex flex-col gap-4">
             <Link to="/" className="flex items-center gap-3">
-              <div className="w-[32px] h-[32px] bg-[#0A0A0A] rounded-[10px] flex items-center justify-center text-bio-green">
-                <Hexagon size={16} strokeWidth={2.5} />
-              </div>
+              <BrandMark size={34} />
               <div className="flex flex-col">
                 <span className="font-bold text-[16px] leading-tight text-text-main">
                   BioGen AI

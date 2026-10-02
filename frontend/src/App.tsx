@@ -22,7 +22,6 @@ import { SettingsView } from './features/SettingsView';
 import { ComingSoon } from './components/ComingSoon';
 import { WorkspaceShell } from './components/workspace/WorkspaceShell';
 import { useDesignWorkspace } from './features/useDesignWorkspace';
-import { useAppStore } from './stores/appStore';
 import { RequireAuth } from './features/auth/RequireAuth';
 import { lazy, Suspense, useEffect } from 'react';
 
@@ -182,14 +181,9 @@ function RouteScrollReset() {
 
 /** The working RFdiffusion studio — Design / Analyze / Results / Settings. */
 function RFdiffusionStudio() {
-  const { checkConnection } = useAppStore();
+  // No background pings: every request wakes the (billed) Modal gateway, so the backend is only contacted when the
+  // person does something. RequireAuth's session check already proves it is reachable, and "Check connection" is manual.
   const design = useDesignWorkspace();
-
-  useEffect(() => {
-    checkConnection();
-    const interval = setInterval(checkConnection, 30000);
-    return () => clearInterval(interval);
-  }, [checkConnection]);
 
   return (
     <WorkspaceShell>
