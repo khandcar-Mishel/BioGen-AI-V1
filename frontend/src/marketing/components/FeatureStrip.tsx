@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { LiveAcademicIcon, LiveFlaskIcon, LiveCloudIcon, LiveGlobeIcon } from "./ui/LiveIcons";
+import { LiveAcademicIcon, LiveFlaskIcon, LiveCloudIcon } from "./ui/LiveIcons";
 
 const features = [
   {
@@ -25,14 +25,6 @@ const features = [
     iconColor: "text-blue",
     badgeBg: "bg-cyan-light border-blue/20",
     status: "Modal A10G",
-  },
-  {
-    liveIcon: LiveGlobeIcon,
-    title: "Open Science & Data",
-    subtitle: "Global Collaboration",
-    iconColor: "text-amber-600",
-    badgeBg: "bg-amber-50 border-amber-200",
-    status: "PDB / UniProt",
   }
 ];
 
@@ -46,7 +38,7 @@ export default function FeatureStrip() {
         transition={{ duration: 0.6 }}
         className="bg-white/95 backdrop-blur-md rounded-[20px] shadow-[0_12px_40px_rgba(7,26,51,0.08)] border border-border-light p-5 md:p-6"
       >
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 items-center">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-center">
           {features.map((feature, i) => (
             <motion.div
               key={i}

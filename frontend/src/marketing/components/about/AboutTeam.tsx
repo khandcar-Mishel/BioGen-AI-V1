@@ -8,7 +8,7 @@ export default function AboutTeam() {
       badge: "Founder",
       role: "CADD & Bioinformatic Researcher",
       description: "Passionate about computational biology, protein design, and the intersection of pharmacy and artificial intelligence.",
-      github: "https://github.com/khandcar-Mishel/BioGenesis-AI-V1",
+      github: "https://github.com/khandcar-Mishel",
       tagsIcon: <FlaskConical size={16} strokeWidth={2} />,
       tagsText: "Computational Biology | Protein Design"
     },
@@ -17,7 +17,7 @@ export default function AboutTeam() {
       badge: "Web Developer",
       role: "Full Stack AI Engineer",
       description: "Builds intuitive and scalable web applications to make computational tools accessible to researchers.",
-      github: "https://github.com/khandcar-Mishel/BioGenesis-AI-V1",
+      github: "https://github.com/thabir303",
       tagsIcon: <Code2 size={16} strokeWidth={2} />,
       tagsText: "Web Development | UI/UX"
     }
@@ -69,7 +69,7 @@ export default function AboutTeam() {
                 </p>
 
                 <div className="flex flex-col gap-2 mt-auto pt-4 border-t border-about-border/50">
-                  <a href={member.github} className="flex items-center gap-2 text-[13px] font-semibold text-about-navy hover:text-about-green transition-colors w-fit">
+                  <a href={member.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-[13px] font-semibold text-about-navy hover:text-about-green transition-colors w-fit">
                     <Github size={16} strokeWidth={2} />
                     View GitHub Profile &rarr;
                   </a>

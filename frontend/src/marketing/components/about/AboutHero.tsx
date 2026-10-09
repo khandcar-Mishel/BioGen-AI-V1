@@ -1,6 +1,67 @@
 import { motion } from 'framer-motion';
 import { User, BookOpen, UsersRound, Code2, Leaf, CheckCircle2 } from 'lucide-react';
 
+// A DNA double helix growing inside a heart: new science in service of healthier lives.
+const HELIX_Y = Array.from({ length: 41 }, (_, i) => 74 + i * 2.4);
+const helixX = (y: number, phase: number) => 120 + 21 * Math.sin((y - 74) / 9 + phase);
+const strand = (phase: number) => HELIX_Y.map((y, i) => `${i ? 'L' : 'M'}${helixX(y, phase).toFixed(1)} ${y.toFixed(1)}`).join(' ');
+const HELIX_RUNGS = HELIX_Y.filter((_, i) => i % 4 === 0);
+
+function HealthHelixArt() {
+  return (
+    <svg viewBox="0 0 240 220" className="absolute right-3 top-1/2 z-10 h-[88%] w-auto -translate-y-1/2" role="img" aria-label="A DNA helix growing inside a heart, representing healthier lives through new therapeutics">
+      <defs>
+        <linearGradient id="aboutHeart" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#12B886" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#0F7CDF" stopOpacity="0.16" />
+        </linearGradient>
+        <linearGradient id="aboutStrand" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#00A878" />
+          <stop offset="100%" stopColor="#0F7CDF" />
+        </linearGradient>
+      </defs>
+
+      <motion.path
+        d="M120 202 C42 144 18 84 58 52 C88 30 113 48 120 68 C127 48 152 30 182 52 C222 84 198 144 120 202 Z"
+        fill="url(#aboutHeart)"
+        stroke="#00A878"
+        strokeWidth="2.5"
+        strokeLinejoin="round"
+        style={{ transformOrigin: '120px 120px' }}
+        animate={{ scale: [1, 1.025, 1] }}
+        transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {HELIX_RUNGS.map((y) => (
+        <line key={y} x1={helixX(y, 0)} y1={y} x2={helixX(y, Math.PI)} y2={y} stroke="#00A878" strokeOpacity="0.45" strokeWidth="2" strokeLinecap="round" />
+      ))}
+      <path d={strand(0)} fill="none" stroke="url(#aboutStrand)" strokeWidth="4" strokeLinecap="round" />
+      <path d={strand(Math.PI)} fill="none" stroke="url(#aboutStrand)" strokeWidth="4" strokeLinecap="round" strokeOpacity="0.65" />
+
+      {/* Sprouting leaf: growth and renewal */}
+      <path d="M120 66 C120 44 134 30 154 28 C154 48 142 62 120 66 Z" fill="#00A878" fillOpacity="0.85" />
+      <path d="M120 66 C124 54 132 44 144 36" fill="none" stroke="#fff" strokeOpacity="0.7" strokeWidth="1.5" strokeLinecap="round" />
+
+      {/* Orbiting molecules */}
+      {[
+        { x: 28, y: 40, r: 6, d: 0 },
+        { x: 212, y: 64, r: 8, d: 0.7 },
+        { x: 34, y: 170, r: 5, d: 1.4 },
+        { x: 208, y: 168, r: 6, d: 2.1 },
+      ].map((n) => (
+        <motion.circle
+          key={`${n.x}-${n.y}`}
+          cx={n.x} cy={n.y} r={n.r}
+          fill="none" stroke="#00A878" strokeWidth="2"
+          animate={{ opacity: [0.35, 1, 0.35] }}
+          transition={{ duration: 3, delay: n.d, repeat: Infinity, ease: 'easeInOut' }}
+        />
+      ))}
+      <path d="M28 46 L52 66 M212 72 L190 80 M34 165 L58 148 M208 162 L186 150" stroke="#00A878" strokeOpacity="0.4" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function AboutHero() {
   return (
     <section className="relative bg-about-hero-cyan overflow-hidden border-b border-about-border">
@@ -67,28 +128,15 @@ export default function AboutHero() {
               transition={{ duration: 0.7, delay: 0.3 }}
               className="relative w-full h-full max-w-[480px] aspect-[4/3] rounded-[16px] bg-about-bg border border-about-border shadow-sm overflow-hidden flex items-center justify-center group"
             >
-              {/* CSS/SVG representation of the biomedical robotic hand and capsule */}
               <div className="absolute inset-0 bg-gradient-to-br from-about-hero-cyan to-[#D0EAEA] opacity-50 mix-blend-multiply"></div>
 
-              <div className="relative z-10 flex flex-col items-center">
-                <div className="w-24 h-10 rounded-full bg-about-green shadow-[0_0_40px_rgba(0,168,120,0.6)] border-2 border-white/40 rotate-[-15deg] group-hover:rotate-[-5deg] transition-transform duration-700"></div>
-                <div className="mt-8 text-about-green font-semibold text-sm tracking-wide bg-white/70 px-4 py-1.5 rounded-full border border-about-green/20 backdrop-blur-md">
-                  Therapeutic Candidate
-                </div>
-              </div>
-
-              {/* Decorative robotic joints abstraction */}
-              <svg className="absolute top-[-20%] right-[-10%] w-[60%] h-[70%] opacity-40" viewBox="0 0 200 200">
-                <path d="M150 0 L120 80 L60 120" fill="none" stroke="#526B8A" strokeWidth="8" strokeLinecap="round" strokeLinejoin="round" />
-                <circle cx="120" cy="80" r="12" fill="#071A3D" />
-                <circle cx="60" cy="120" r="8" fill="#071A3D" />
-              </svg>
+              <HealthHelixArt />
 
               {/* Floating Drug Candidates Card */}
               <motion.div
                 animate={{ y: [0, -6, 0] }}
                 transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                className="absolute -bottom-4 -left-4 lg:bottom-4 lg:-left-12 bg-white rounded-[14px] p-5 shadow-[0_8px_30px_rgba(7,26,61,0.08)] border border-about-border w-[220px] z-20"
+                className="absolute -bottom-4 -left-4 lg:bottom-4 lg:left-4 bg-white rounded-[14px] p-5 shadow-[0_8px_30px_rgba(7,26,61,0.08)] border border-about-border w-[220px] z-20"
               >
                 <h4 className="text-[13px] font-bold text-about-navy mb-3">Drug Candidates</h4>
                 <ul className="flex flex-col gap-2.5">
@@ -107,7 +155,7 @@ export default function AboutHero() {
               </motion.div>
 
               {/* Handwritten annotation */}
-              <div className="absolute top-6 right-6 lg:top-8 lg:-left-8 text-about-green font-['Caveat'] text-[20px] leading-tight rotate-[-6deg] z-20 pointer-events-none drop-shadow-sm">
+              <div className="absolute top-6 left-5 lg:top-6 lg:left-5 text-about-green font-['Caveat'] text-[20px] leading-tight rotate-[-6deg] z-20 pointer-events-none drop-shadow-sm">
                 AI discovers<br/>
                 new possibilities<br/>
                 for better<br/>

@@ -2,8 +2,14 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Send, ChevronDown, Github, MessageSquare, Mail, Lightbulb, CheckCircle2 } from 'lucide-react';
 
+const CONTACT_EMAIL = 'mishel.bioinfo@gmail.com';
+// Web3Forms delivers the message to CONTACT_EMAIL. The key is public by design; without it the form falls back to mailto:.
+const WEB3FORMS_KEY = import.meta.env.VITE_WEB3FORMS_KEY as string | undefined;
+
 export default function AboutContact() {
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({ name: '', email: '', subject: 'general', message: '' });
   return (
     <section className="bg-white pb-20 lg:pb-32">
@@ -31,9 +37,11 @@ export default function AboutContact() {
                   <div className="w-12 h-12 bg-white text-bio-green rounded-full flex items-center justify-center mx-auto mb-3 shadow-sm">
                     <CheckCircle2 size={24} />
                   </div>
-                  <h3 className="text-lg font-bold text-about-navy-head mb-1">Email draft prepared</h3>
+                  <h3 className="text-lg font-bold text-about-navy-head mb-1">{WEB3FORMS_KEY ? 'Message sent' : 'Email draft prepared'}</h3>
                   <p className="text-sm text-about-text mb-4">
-                    Your email client should open with your message. Send the draft there to complete your inquiry.
+                    {WEB3FORMS_KEY
+                      ? "Thanks for reaching out. We'll get back to you at the email you provided."
+                      : 'Your email client should open with your message. Send the draft there to complete your inquiry.'}
                   </p>
                   <button
                     type="button"
@@ -48,11 +56,31 @@ export default function AboutContact() {
                 </div>
               ) : (
                 <form
-                  onSubmit={(e) => {
+                  onSubmit={async (e) => {
                     e.preventDefault();
-                    const body = encodeURIComponent(`${formData.message}\n\n— ${formData.name} (${formData.email})`);
-                    window.location.href = `mailto:contact@biogen.ai?subject=${encodeURIComponent(`[BioGen AI] ${formData.subject}`)}&body=${body}`;
-                    setSubmitted(true);
+                    const subject = `[BioGen AI] ${formData.subject}`;
+                    if (!WEB3FORMS_KEY) {
+                      const body = encodeURIComponent(`${formData.message}\n\n— ${formData.name} (${formData.email})`);
+                      window.location.href = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${body}`;
+                      setSubmitted(true);
+                      return;
+                    }
+                    setSending(true);
+                    setError('');
+                    try {
+                      const res = await fetch('https://api.web3forms.com/submit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                        body: JSON.stringify({ access_key: WEB3FORMS_KEY, subject, from_name: formData.name, name: formData.name, email: formData.email, message: formData.message }),
+                      });
+                      const result = await res.json();
+                      if (!res.ok || !result.success) throw new Error(result.message || 'Request failed');
+                      setSubmitted(true);
+                    } catch {
+                      setError(`We couldn't send your message. Please email ${CONTACT_EMAIL} directly.`);
+                    } finally {
+                      setSending(false);
+                    }
                   }}
                   className="flex flex-col gap-5"
                 >
@@ -115,11 +143,14 @@ export default function AboutContact() {
 
                   <button
                     type="submit"
-                    className="w-full bg-about-green hover:bg-about-green-sec text-white font-semibold text-[15px] py-4 rounded-[8px] flex items-center justify-center gap-2 transition-all hover:-translate-y-[1px] shadow-sm mt-2 cursor-pointer"
+                    disabled={sending}
+                    className="w-full bg-about-green hover:bg-about-green-sec text-white font-semibold text-[15px] py-4 rounded-[8px] flex items-center justify-center gap-2 transition-all hover:-translate-y-[1px] shadow-sm mt-2 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed disabled:hover:translate-y-0"
                   >
                     <Send size={18} />
-                    Prepare Email
+                    {sending ? 'Sending…' : WEB3FORMS_KEY ? 'Send Message' : 'Prepare Email'}
                   </button>
+
+                  {error && <p role="alert" className="text-center text-[13px] text-red-600">{error}</p>}
 
                   <p className="text-center text-[13px] text-about-muted mt-2">
                     We typically respond within 2–3 business days.
@@ -173,7 +204,7 @@ export default function AboutContact() {
                     <Mail size={20} strokeWidth={2} />
                   </div>
                   <div>
-                    <h4 className="text-[15px] font-bold text-about-navy-head mb-1"><a href="mailto:contact@biogen.ai" className="hover:underline">General Inquiries</a></h4>
+                    <h4 className="text-[15px] font-bold text-about-navy-head mb-1"><a href={`mailto:${CONTACT_EMAIL}`} className="hover:underline">General Inquiries</a></h4>
                     <p className="text-[14px] text-about-text leading-[1.5]">Feel free to reach out through the contact form.</p>
                   </div>
                 </div>

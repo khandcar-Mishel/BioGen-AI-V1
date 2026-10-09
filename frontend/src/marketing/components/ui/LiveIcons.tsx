@@ -410,3 +410,30 @@ export function LiveNetworkIcon({ size = 24, className = "text-blue", color = "c
     </div>
   );
 }
+
+// 17. Live Backbone Icon: a folding peptide chain with residue nodes
+export function LiveBackboneIcon({ size = 24, className = "text-primary", color = "currentColor" }: LiveIconProps) {
+  return (
+    <div className={`relative flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
+      <span className="absolute inset-0 rounded-full bg-primary/20 blur-[6px] animate-pulse" style={{ animationDuration: '3s' }} />
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="relative z-10">
+        <path d="M3 17c3-9 5-9 7-4s4 5 6-1 3-6 5-4" />
+        <motion.circle
+          cx="3" cy="17" r="1.6" fill={color}
+          animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.circle
+          cx="12" cy="14" r="1.6" fill={color}
+          animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.4, delay: 0.8, repeat: Infinity, ease: "easeInOut" }}
+        />
+        <motion.circle
+          cx="21" cy="9" r="1.6" fill={color}
+          animate={{ scale: [1, 1.3, 1], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2.4, delay: 1.6, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </svg>
+    </div>
+  );
+}
