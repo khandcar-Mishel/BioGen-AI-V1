@@ -8,6 +8,7 @@ export default function AboutTeam() {
       badge: "Founder",
       role: "CADD & Bioinformatic Researcher",
       description: "Passionate about computational biology, protein design, and the intersection of pharmacy and artificial intelligence.",
+      image: "/kh-mishel.jpeg",
       github: "https://github.com/khandcar-Mishel",
       tagsIcon: <FlaskConical size={16} strokeWidth={2} />,
       tagsText: "Computational Biology | Protein Design"
@@ -17,6 +18,7 @@ export default function AboutTeam() {
       badge: "Web Developer",
       role: "Full Stack AI Engineer",
       description: "Builds intuitive and scalable web applications to make computational tools accessible to researchers.",
+      image: "/th_abir-pic.png",
       github: "https://github.com/thabir303",
       tagsIcon: <Code2 size={16} strokeWidth={2} />,
       tagsText: "Web Development | UI/UX"
@@ -47,7 +49,7 @@ export default function AboutTeam() {
               className="bg-white border border-about-border rounded-[12px] p-5 sm:p-6 flex flex-col sm:flex-row gap-6 shadow-sm hover:shadow-md transition-shadow duration-300"
             >
               <div className="w-full sm:w-[145px] h-[200px] shrink-0 rounded-[10px] overflow-hidden bg-about-bg">
-                {member.name === "Khandcar Mishel" ? <img src="/kh-mishel.jpeg" alt="Khandcar Mishel" className="w-full h-full object-cover" /> : <div role="img" aria-label={member.name} className="w-full h-full flex items-center justify-center bg-about-cyan text-about-green text-5xl font-semibold">{member.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</div>}
+                {member.image ? <img src={member.image} alt={member.name} className="w-full h-full object-cover" /> : <div role="img" aria-label={member.name} className="w-full h-full flex items-center justify-center bg-about-cyan text-about-green text-5xl font-semibold">{member.name.split(' ').map(part => part[0]).slice(0, 2).join('')}</div>}
               </div>
 
               <div className="flex flex-col flex-1">
