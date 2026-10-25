@@ -98,6 +98,7 @@ COMPLEX_BETA_CKPT_URL = "http://files.ipd.uw.edu/pub/RFdiffusion/f572d396fae9206
 AF_PARAMS_URL = "https://storage.googleapis.com/alphafold/alphafold_params_2022-12-06.tar"
 
 weights_volume = modal.Volume.from_name("biogen-rfdiffusion-weights", create_if_missing=True)
+weights_volume_ro = weights_volume.read_only()  # the gateway only checks that the files exist
 results_volume = modal.Volume.from_name("biogen-rfdiffusion-results", create_if_missing=True)
 jobs_dict = modal.Dict.from_name("biogen-jobs", create_if_missing=True)
 # Small side indexes. Every key is written by exactly one job, so concurrent submits can never overwrite each other,
@@ -658,6 +659,17 @@ def settle_stale(r: dict, now=None) -> dict:
         return {**r, "status": "failed", "status_message": "Failed",
                 "error_message": "This job stopped unexpectedly (its controller stopped responding). Start it again."}
     return r
+
+
+# Files download_weights leaves on the weights Volume; their presence is the source of truth for "weights ready"
+# (the biogen-jobs Dict flag is only a cache: Modal Dicts expire after a period of inactivity).
+WEIGHT_FILES = ("rfdiffusion_models/Base_ckpt.pt", "rfdiffusion_models/Complex_base_ckpt.pt",
+                "rfdiffusion_models/Complex_beta_ckpt.pt", "params/done.txt")
+WEIGHTS_RECHECK_S = 30  # how long a "not ready" answer is trusted before the Volume is looked at again
+
+
+def weights_on_volume(root: str) -> bool:
+    return all(os.path.isfile(os.path.join(root, f)) for f in WEIGHT_FILES)
 
 
 def pick_client_ip(forwarded: str, peer: str) -> str:
@@ -1277,7 +1289,7 @@ def run_job(job_id: str, params: dict):
 @app.function(
     image=web_image,
     secrets=[modal.Secret.from_name("biogen-secrets")],
-    volumes={RESULTS: results_volume},
+    volumes={RESULTS: results_volume, WEIGHTS: weights_volume_ro},  # weights: readiness check only
     scaledown_window=300,
     min_containers=0,
 )
@@ -1368,13 +1380,33 @@ def api():
             live.append(r)
         return live
 
+    weights_check = {"at": 0.0}
+
+    def weights_ready() -> bool:
+        """Dict flag first (free); if it is missing, look at the Volume (at most every WEIGHTS_RECHECK_S) and
+        restore the flag, so an expired Dict never makes a fully downloaded model look missing."""
+        if jobs_dict.get("meta:weights_ready"):
+            return True
+        now = time.time()
+        if now - weights_check["at"] < WEIGHTS_RECHECK_S:
+            return False
+        weights_check["at"] = now
+        try:
+            weights_volume_ro.reload()
+        except Exception:                          # reload can refuse while files are open; the mounted view still works
+            pass
+        if weights_on_volume(WEIGHTS):
+            jobs_dict["meta:weights_ready"] = True
+            return True
+        return False
+
     @web.get("/")
     def root():
         return {"status": "ok", "message": "BioGen AI RFdiffusion API", "version": VERSION}
 
     @web.get(f"{API_PREFIX}/health")
     def health():
-        ready = bool(jobs_dict.get("meta:weights_ready"))
+        ready = weights_ready()
         active = len(active_recs())
         return {
             "status": "ok", "gpu_name": f"Modal {GPU}", "gpu_available": True, "cuda_available": True,
@@ -1390,7 +1422,7 @@ def api():
             params = validate_params(body)
         except ValueError as e:
             raise HTTPException(422, str(e))
-        if not jobs_dict.get("meta:weights_ready"):
+        if not weights_ready():
             raise HTTPException(503, "Model weights are not on the Volume yet - run download_weights first")
         if len(active_recs()) >= MAX_ACTIVE_JOBS:
             raise HTTPException(429, f"Too many running jobs (limit {MAX_ACTIVE_JOBS}). Wait for one to finish.")

@@ -391,6 +391,27 @@ class JobListTests(unittest.TestCase):
         self.assertEqual(m.settle_stale(self.REC, now=10 ** 9)["status"], "completed")
 
 
+class WeightsOnVolumeTests(unittest.TestCase):
+    def make(self, root, files):
+        for f in files:
+            path = os.path.join(root, f)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            open(path, "w").close()
+
+    def test_all_files_present(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.make(d, m.WEIGHT_FILES)
+            self.assertTrue(m.weights_on_volume(d))
+
+    def test_missing_file_or_empty_volume_is_not_ready(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertFalse(m.weights_on_volume(d))
+            self.make(d, m.WEIGHT_FILES[:-1])           # download interrupted before params/done.txt
+            self.assertFalse(m.weights_on_volume(d))
+
+
 class ClientIpTests(unittest.TestCase):
     def test_last_forwarded_entry_wins_so_a_spoofed_header_cannot_dodge_the_lockout(self):
         self.assertEqual(m.pick_client_ip("6.6.6.6, 9.9.9.9", "10.0.0.1"), "9.9.9.9")
